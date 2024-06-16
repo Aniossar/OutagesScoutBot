@@ -73,6 +73,7 @@ def handle_text(message):
 	chat_id = message.chat.id
 	street = message.text
 	if is_valid_street_name(street):
+		street = format_proper_street_name(street)
 		conn = sqlite3.connect(db_address)
 		cursor = conn.cursor()
 		cursor.execute('UPDATE users SET street = ? WHERE chat_id = ?', (street, chat_id))
