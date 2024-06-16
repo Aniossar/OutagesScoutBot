@@ -1,7 +1,6 @@
 from bot_config import TELEGRAM_TOKEN
 from aiogram import Bot, Dispatcher, types
 from googletrans import Translator
-from bot_config import TELEGRAM_TOKEN
 from bs4 import BeautifulSoup
 
 import telebot
@@ -68,11 +67,12 @@ def handle_start(message):
 		+ "\n\n_К примеру:_ если вы напишете «Tamar», то вам будут выпадать результаты и по *Tamar*ashvili, и по Queen *Tamar* Avenue, "
 		+ "а если напишете «Tamarashvili», то только по *«Tamarashvili»*.", parse_mode='Markdown')
 
+
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
 	chat_id = message.chat.id
 	street = message.text
-	if street != '' and street != ' ' and len(street) < 50:
+	if is_valid_street_name(street):
 		conn = sqlite3.connect(db_address)
 		cursor = conn.cursor()
 		cursor.execute('UPDATE users SET street = ? WHERE chat_id = ?', (street, chat_id))
@@ -83,8 +83,22 @@ def handle_text(message):
 		check_for_water_news()
 		check_for_electricity_news()
 	else:
-		bot.send_message(chat_id, f"Не надо оставлять пустую строку или писать слишком много текста - иначе правильная работа бота будет осложнена. Попробуйте еще раз")
+		bot.send_message(chat_id, f"Есть несколько правил:\n • Не надо оставлять пустую строку\n" 
+			+ " • Не надо писать слишком много текста\n • Используйте только латиницу или цифры\n" 
+			+ "В противном случае правильная работа бота будет осложнена. Попробуйте еще раз", parse_mode='Markdown')
 		bot.send_message(chat_id, "Напишите вашу улицу (просто название, на английском):")
+
+
+def is_valid_street_name(street):
+	if len(street) == 0 or len(street) > 50:
+		return False
+	return True
+
+
+def format_proper_street_name(street):
+	street = street.strip()
+	street = re.sub(r'\s+', ' ', street)
+	return street
 
 
 def check_for_water_news():
@@ -160,9 +174,7 @@ def is_electricity_news_fresh(content_id):
 
 	logging.info(f"Электричество было {result}, а теперь стало {content_id}")
 	
-	if result is None or result[0] != str(content_id):
-		return True
-	return False;
+	return result is None or result[0] != str(content_id)
 	
 
 def fetch_electricity_news_details(last_item, content_id):
@@ -195,6 +207,7 @@ def translate_text(text):
 		return translated.text
 	except RequestException:
 		logging.error("Ошибка запроса к API Google Translate!")
+		return text
 
 
 def notify_users_if_relevant(title, content, i_type):
@@ -226,10 +239,11 @@ def start_news_checking():
 	while True:
 		try:
 			check_for_water_news()
+			time.sleep(300)
 			check_for_electricity_news()
+			time.sleep(300)
 		except Exception as e:
 			logging.error(f"Error checking for news: {e}")
-		time.sleep(600)
 
 
 def run_polling():
