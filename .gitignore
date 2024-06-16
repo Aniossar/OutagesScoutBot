@@ -1,0 +1,9 @@
+bot_config.py
+requirements.txt
+__pycache__/
+pom.txt
+TestBot.py
+sqlite3.exe
+amvera.yml
+users_and_streets.db
+data/
