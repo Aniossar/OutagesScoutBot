@@ -145,6 +145,10 @@ def fetch_water_news_details(url):
 	save_water_news_details(url)
 
 
+def split_text_into_chunks(text, chunk_size=3500):
+	return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+
+
 def save_water_news_details(url):
 	conn = sqlite3.connect(db_address)
 	cursor = conn.cursor()
@@ -194,21 +198,22 @@ def format_content(html_content):
 	return result
 
 
+def translate_text(text):
+	try:
+		chunks = split_text_into_chunks(text)
+		translated_chunks = [translator.translate(chunk, src='ka', dest='en').text for chunk in chunks]
+		return ' '.join(translated_chunks)
+	except requests.RequestException:
+		logging.error("Ошибка запроса к API Google Translate!")
+		return text
+
+
 def save_electricity_news_details(content_id):
 	conn = sqlite3.connect(db_address)
 	cursor = conn.cursor()
 	cursor.execute('INSERT INTO last_electricity_news_id (content_id) VALUES (?)', (content_id,))
 	conn.commit()
 	conn.close()
-
-
-def translate_text(text):
-	try:
-		translated = translator.translate(text, src='ka', dest='en')
-		return translated.text
-	except RequestException:
-		logging.error("Ошибка запроса к API Google Translate!")
-		return text
 
 
 def notify_users_if_relevant(title, content, i_type):
@@ -223,7 +228,10 @@ def notify_users_if_relevant(title, content, i_type):
 		chat_id, street = user
 		if street.lower() in content.lower():
 			content_with_bold = highlight_inclusions(content, street)
-			bot.send_message(chat_id, f"{icon} *{title}*\n\n{content_with_bold}", parse_mode='Markdown')
+			content_chunks = split_text_into_chunks(content_with_bold)
+			for chunk in content_chunks:
+				bot.send_message(chat_id, f"{icon} *{title}*\n\n{chunk}", parse_mode='Markdown')
+				logging.info(f"Send {chat_id} message")
 
 
 def highlight_inclusions(text, word):
@@ -245,6 +253,7 @@ def start_news_checking():
 			time.sleep(300)
 		except Exception as e:
 			logging.error(f"Error checking for news: {e}")
+			time.sleep(7)
 
 
 def run_polling():
