@@ -201,10 +201,25 @@ def format_content(html_content):
 def translate_text(text):
 	try:
 		chunks = split_text_into_chunks(text)
-		translated_chunks = [translator.translate(chunk, src='ka', dest='en').text for chunk in chunks]
+		translated_chunks = []
+		for chunk in chunks:
+			attempt = 0
+			while attempt < 2:
+				try:
+					translation = translator.translate(chunk, src='ka', dest='en')
+					translated_chunk = translation.text if hasattr(translation, 'text') else translation
+					if not re.search(r'[აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ]', translated_chunk):
+						break
+				except Exception as e:
+					logging.warning(f"Попытка перевода {attempt+1} провалилась: {e}")
+				attempt += 1
+			else:
+				logging.error("Перевести текст не получилось. Вот исходный текст: " + chunk)
+				translated_chunk = chunk
+			translated_chunks.append(translated_chunk)
 		return ' '.join(translated_chunks)
-	except requests.RequestException:
-		logging.error("Ошибка запроса к API Google Translate!")
+	except requests.RequestException as e:
+		logging.error(f"Ошибка запроса к API Google Translate: {e}")
 		return text
 
 
@@ -222,7 +237,9 @@ def notify_users_if_relevant(title, content, i_type):
 	cursor.execute('SELECT chat_id, street FROM users')
 	users = cursor.fetchall()
 	conn.close()
+
 	icon =  icons[i_type]
+	notified_users = []
 
 	for user in users:
 		chat_id, street = user
@@ -231,7 +248,10 @@ def notify_users_if_relevant(title, content, i_type):
 			content_chunks = split_text_into_chunks(content_with_bold)
 			for chunk in content_chunks:
 				bot.send_message(chat_id, f"{icon} *{title}*\n\n{chunk}", parse_mode='Markdown')
-				logging.info(f"Send {chat_id} message")
+			notified_users.append(chat_id)
+
+	if notified_users:
+		logging.info(f"Сообщение было отправлено пользователям: {', '.join(map(str, notified_users))}")
 
 
 def highlight_inclusions(text, word):
