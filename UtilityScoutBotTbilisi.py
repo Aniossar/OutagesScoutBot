@@ -200,6 +200,7 @@ def format_content(html_content):
 
 def translate_text(text):
 	try:
+		text = remove_leading_spaces(text)
 		chunks = split_text_into_chunks(text)
 		translated_chunks = []
 		for chunk in chunks:
@@ -210,6 +211,7 @@ def translate_text(text):
 					translated_chunk = translation.text if hasattr(translation, 'text') else translation
 					if not re.search(r'[აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ]', translated_chunk):
 						break
+					time.sleep(4)
 				except Exception as e:
 					logging.warning(f"Попытка перевода {attempt+1} провалилась: {e}")
 				attempt += 1
@@ -217,10 +219,15 @@ def translate_text(text):
 				logging.error("Перевести текст не получилось. Вот исходный текст: " + chunk)
 				translated_chunk = chunk
 			translated_chunks.append(translated_chunk)
+			time.sleep(3)
 		return ' '.join(translated_chunks)
 	except requests.RequestException as e:
 		logging.error(f"Ошибка запроса к API Google Translate: {e}")
 		return text
+
+
+def remove_leading_spaces(text):
+	return text.lstrip(' ')
 
 
 def save_electricity_news_details(content_id):
