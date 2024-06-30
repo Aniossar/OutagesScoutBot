@@ -18,7 +18,7 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 translator = Translator()
 
 url_water_base = 'https://www.gwp.ge'
-url_water_list = '/en/gadaudebeli'
+url_water_list = '/ka/gadaudebeli'
 url_electricity = 'https://app.telasi.ge/api/view/telasi/getPoweroutages'
 url_electricity_one = 'https://www.telasi.ge/company-news/power-outage?content='
 db_address = '../data/users_and_streets.db'
@@ -88,6 +88,19 @@ def handle_text(message):
 			+ " • Не надо писать слишком много текста\n • Используйте только латиницу или цифры\n" 
 			+ "В противном случае правильная работа бота будет осложнена. Попробуйте еще раз", parse_mode='Markdown')
 		bot.send_message(chat_id, "Напишите вашу улицу (просто название, на английском):")
+
+
+def get_username(chat_id):
+	try:
+		chat = bot.get_chat(chat_id)
+		username = chat.username
+		if username:
+			return username
+		else:
+			return "Username не установлен"
+	except Exception as e:
+		logging.error(f"Не удалось получить username для chat_id {chat_id}: {e}")
+		return None
 
 
 def is_valid_street_name(street):
@@ -194,40 +207,58 @@ def format_content(html_content):
 	paragraphs = markdown_content.split('\n\n')
 	cleaned_paragraphs = [' '.join(p.split()) for p in paragraphs]
 	final_content = '\n\n'.join(cleaned_paragraphs)
-	result = final_content.replace('\n\n\n', '\n\n').replace('\n\n', '\n')
-	return result
+	# result = final_content.replace('\n\n\n', '\n\n').replace('\n\n', '\n')
+	return final_content
 
 
 def translate_text(text):
+	text = clean_text_from_extra_spaces(text)
+	text = fix_comma_spacing(text)
 	try:
-		text = remove_leading_spaces(text)
 		chunks = split_text_into_chunks(text)
 		translated_chunks = []
 		for chunk in chunks:
-			attempt = 0
-			while attempt < 2:
-				try:
-					translation = translator.translate(chunk, src='ka', dest='en')
-					translated_chunk = translation.text if hasattr(translation, 'text') else translation
-					if not re.search(r'[აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ]', translated_chunk):
-						break
-					time.sleep(4)
-				except Exception as e:
-					logging.warning(f"Попытка перевода {attempt+1} провалилась: {e}")
-				attempt += 1
-			else:
-				logging.error("Перевести текст не получилось. Вот исходный текст: " + chunk)
-				translated_chunk = chunk
+			translated_chunk = recursive_translate(chunk)
 			translated_chunks.append(translated_chunk)
 			time.sleep(3)
-		return ' '.join(translated_chunks)
+		translated_text = ' '.join(translated_chunks)
+		return translated_text
 	except requests.RequestException as e:
 		logging.error(f"Ошибка запроса к API Google Translate: {e}")
 		return text
 
 
-def remove_leading_spaces(text):
-	return text.lstrip(' ')
+def clean_text_from_extra_spaces(text):
+	text = text.lstrip()
+	# text = re.sub(r'\s+', ' ', text)
+	return text
+
+
+def fix_comma_spacing(text):
+	text = re.sub(r'\s+,', ',', text)
+	text = re.sub(r',(\S)', r', \1', text)
+	return text
+
+
+def recursive_translate(chunk, max_attempts=3):
+	attempts = 0
+	while attempts < max_attempts:
+		try:
+			translation = translator.translate(chunk, src='ka', dest='en').text
+			if re.search(r'[აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ]', translation):
+				match = re.search(r'[აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ]', translation)
+				if match:
+					translated_part = translation[:match.start()]
+					untranslated_part = chunk[match.start():]
+					retranslated_part = recursive_translate(untranslated_part)
+					return translated_part + retranslated_part
+			return translation
+		except Exception as e:
+			logging.warning(f"Ошибка при попытке {attempts+1} рекурсивного перевода: {e}")
+			attempts += 1
+			time.sleep(3)
+	logging.error(f"Не удалось перевести текст после {max_attempts} попыток: {chunk}")
+	return chunk
 
 
 def save_electricity_news_details(content_id):
@@ -250,12 +281,13 @@ def notify_users_if_relevant(title, content, i_type):
 
 	for user in users:
 		chat_id, street = user
-		if street.lower() in content.lower():
-			content_with_bold = highlight_inclusions(content, street)
-			content_chunks = split_text_into_chunks(content_with_bold)
-			for chunk in content_chunks:
-				bot.send_message(chat_id, f"{icon} *{title}*\n\n{chunk}", parse_mode='Markdown')
-			notified_users.append(chat_id)
+		if chat_id and street and content:
+			if street.lower() in content.lower():
+				content_with_bold = highlight_inclusions(content, street)
+				content_chunks = split_text_into_chunks(content_with_bold)
+				for chunk in content_chunks:
+					bot.send_message(chat_id, f"{icon} *{title}*\n\n{chunk}", parse_mode='Markdown')
+				notified_users.append(chat_id)
 
 	if notified_users:
 		logging.info(f"Сообщение было отправлено пользователям: {', '.join(map(str, notified_users))}")
